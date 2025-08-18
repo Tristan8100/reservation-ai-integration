@@ -4,6 +4,7 @@ use App\Http\Controllers\API\ResetPasswordController;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\VerifyEmailController;
+use App\Http\Controllers\API\AdminAuthenticationController;
 
 Route::group(['namespace' => 'App\Http\Controllers\API'], function () {
     // --------------- Register and Login ----------------//
@@ -36,3 +37,9 @@ Route::post('/forgot-password-token', [ResetPasswordController::class, 'verifyOt
 Route::post('/reset-password', [ResetPasswordController::class, 'resetPassword'])
     ->name('password.update')
     ->middleware(['throttle:6,1']);
+
+Route::post('/admin-login', [AdminAuthenticationController::class, 'login'])
+    ->middleware(['throttle:6,1']);
+
+
+include __DIR__ . '/package.php';

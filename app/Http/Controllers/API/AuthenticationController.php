@@ -93,8 +93,9 @@ class AuthenticationController extends Controller
                 ], 401);
             }
 
-            $user = Auth::user();
-            $token = $user->createToken('authToken')->plainTextToken;
+            $user = User::where('email', $credentials['email'])->first();
+            $user->tokens()->delete();
+            $token = $user->createToken('admin-auth-token')->plainTextToken;
 
             return response()->json([
                 'response_code' => 200,
