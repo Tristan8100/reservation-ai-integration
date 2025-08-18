@@ -134,7 +134,7 @@ class PackageController extends Controller
         $package->update([
             'name' => $validated['name'],
             'description' => $validated['description'],
-            'picture_url' => $newImagePath, // Will be old or new path
+            'picture_url' => $newImagePath, // Original or Rewrited
         ]);
 
         return response()->json([
