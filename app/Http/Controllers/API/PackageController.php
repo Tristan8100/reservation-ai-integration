@@ -89,67 +89,67 @@ class PackageController extends Controller
     }
 
     public function update(Request $request, $id)
-{
-    $package = Package::findOrFail($id);
+    {
+        $package = Package::findOrFail($id);
 
-    $validated = $request->validate([
-        'name' => 'required|string|max:255',
-        'description' => 'required|string',
-        'picture' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-    ]);
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'required|string',
+            'picture' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+        ]);
 
-    try {
-        // Initialize $newImagePath early to avoid undefined variable issues
-        $newImagePath = $package->picture_url; // Default to old image if no update
+        try {
+            // Initialize $newImagePath early to avoid undefined variable issues
+            $newImagePath = $package->picture_url; // Default to old image if no update
 
-        // Handle image upload if provided
-        if ($request->hasFile('picture')) {
-            $manager = new ImageManager(new Driver());
-            $image = $manager->read($request->file('picture'))
-                ->resize(800, null, function ($constraint) {
-                    $constraint->aspectRatio();
-                    $constraint->upsize();
-                })
-                ->toJpeg(80); //80% decrease quality
+            // Handle image upload if provided
+            if ($request->hasFile('picture')) {
+                $manager = new ImageManager(new Driver());
+                $image = $manager->read($request->file('picture'))
+                    ->resize(800, null, function ($constraint) {
+                        $constraint->aspectRatio();
+                        $constraint->upsize();
+                    })
+                    ->toJpeg(80); //80% decrease quality
 
-            // Generate new filename
-            $filename = 'package-' . Str::slug($request->name) . '-' . time() . '.jpg';
-            $uploadPath = public_path('uploads/packages');
-            File::ensureDirectoryExists($uploadPath);
-            $imagePath = $uploadPath . '/' . $filename;
+                // Generate new filename
+                $filename = 'package-' . Str::slug($request->name) . '-' . time() . '.jpg';
+                $uploadPath = public_path('uploads/packages');
+                File::ensureDirectoryExists($uploadPath);
+                $imagePath = $uploadPath . '/' . $filename;
 
-            // Save new image to DB
-            $image->save($imagePath);
+                // Save new image to DB
+                $image->save($imagePath);
 
-            // Delete old image if it exists
-            if ($package->picture_url && File::exists(public_path($package->picture_url))) {
-                File::delete(public_path($package->picture_url));
+                // Delete old image if it exists
+                if ($package->picture_url && File::exists(public_path($package->picture_url))) {
+                    File::delete(public_path($package->picture_url));
+                }
+
+                // Update the image path
+                $newImagePath = '/uploads/packages/' . $filename;// rewrite
             }
 
-            // Update the image path
-            $newImagePath = '/uploads/packages/' . $filename;// rewrite
+            // Update package data
+            $package->update([
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+                'picture_url' => $newImagePath, // Original or Rewrited
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => $package,
+                'new_image' => $newImagePath //for debugging
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ], 500);
         }
-
-        // Update package data
-        $package->update([
-            'name' => $validated['name'],
-            'description' => $validated['description'],
-            'picture_url' => $newImagePath, // Original or Rewrited
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'data' => $package,
-            'new_image' => $newImagePath //for debugging
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Error: ' . $e->getMessage(),
-        ], 500);
     }
-}
 
 
     public function destroy($id)
@@ -178,6 +178,11 @@ class PackageController extends Controller
                 'message' => 'Deletion failed: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    public function AiAnalysis(Request $request)
+    {
+        //
     }
 
            

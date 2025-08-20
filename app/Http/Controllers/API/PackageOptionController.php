@@ -140,7 +140,7 @@ class PackageOptionController extends Controller
                 }
 
                 $image->save($imagePath);
-                $validated['picture_url'] = 'uploads/package-options/' . $filename;
+                $validated['picture_url'] = '/uploads/package-options/' . $filename;
             }
 
             $option->update($validated);
@@ -199,5 +199,10 @@ class PackageOptionController extends Controller
             'success' => true,
             'data' => $options
         ]);
+    }
+
+    public function AiAnalysis($id)
+    {
+        //
     }
 }
