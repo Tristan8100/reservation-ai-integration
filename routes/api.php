@@ -16,6 +16,14 @@ Route::group(['namespace' => 'App\Http\Controllers\API'], function () {
         Route::get('get-user', 'AuthenticationController@userInfo')->name('get-user');
         Route::post('logout', 'AuthenticationController@logOut')->name('logout');
     });
+
+    Route::middleware('auth:admin-api')->group(function () {
+        Route::get('verify-admin', 'AuthenticationController@user');
+    });
+    
+    Route::middleware('auth:user-api')->group(function () {
+        Route::get('verify-user', 'AuthenticationController@user');
+    });
 });
 
 Route::post('/send-otp', [VerifyEmailController::class, 'sendOtp'])

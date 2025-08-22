@@ -185,4 +185,14 @@ class AuthenticationController extends Controller
             ], 500);
         }
     }
+
+    public function user(Request $request)
+    {
+        return response()->json([
+            'response_code' => 200,
+            'status'        => 'success',
+            'message'       => 'User data fetched successfully',
+            'user_info'     => $request->user(),
+        ]);
+    }
 }
