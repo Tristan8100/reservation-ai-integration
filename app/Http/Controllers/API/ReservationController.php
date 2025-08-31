@@ -9,6 +9,10 @@ use App\Models\Reservation;
 use App\Models\PackageOption;
 use App\Models\User;
 use Illuminate\Validation\Rule;
+use Prism\Prism\Prism;
+use Prism\Prism\Enums\Provider;
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
 
 class ReservationController extends Controller
 {
@@ -59,6 +63,7 @@ class ReservationController extends Controller
         $validated = $request->validate([
             'package_option_id' => 'required|exists:package_options,id',
             'reservation_datetime' => 'required|date|after:now',
+            'address' => 'required|string|max:255',          // Added
         ]);
 
         try {
@@ -71,6 +76,7 @@ class ReservationController extends Controller
                 'status' => 'pending',
                 'price_purchased' => $packageOption->price, // Use actual price, not user input
                 'reservation_datetime' => $validated['reservation_datetime'],
+                'address' => $validated['address'],         // Added
             ]);
 
             return response()->json([
@@ -140,11 +146,25 @@ class ReservationController extends Controller
         ]);
     }
 
-    // Get user's reservations
+    // Get one user's reservations
     public function userReservations($userId)
     {
         $reservations = Reservation::with(['packageOption.package'])
             ->where('user_id', $userId)
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $reservations
+        ]);
+    }
+
+    // Get Authenticated user's reservations
+    public function authUserReservations()
+    {
+        $reservations = Reservation::with(['packageOption.package'])
+            ->where('user_id', Auth::id())
             ->latest()
             ->get();
 
@@ -172,14 +192,32 @@ class ReservationController extends Controller
         $validated = $request->validate([
             'review_text' => 'required|string',
             'rating' => 'required|integer|between:1,5',
-            'sentiment_analysis' => ['required', Rule::in(['Positive', 'Neutral', 'Negative'])], //HARDCODED FIRST, WILL CALL AI
+            //'sentiment_analysis' => ['required', Rule::in(['Positive', 'Neutral', 'Negative'])], //HARDCODED FIRST, WILL CALL AI
         ]);
 
-        $reservation->update($validated);
+        $schema = new ObjectSchema(
+        name: 'movie_review',
+        description: 'A structured movie review',
+        properties: [
+            new StringSchema('sentiment', 'the sentiment of the review: Positive, Neutral, or Negative'),
+        ],
+        requiredFields: ['sentiment']);
+
+        $response = Prism::structured()
+            ->using(Provider::Gemini, 'gemini-2.0-flash')
+            ->withSchema($schema)
+            ->withPrompt($validated['review_text'])
+            ->asStructured();
+
+        $data = $reservation->update([
+            'review_text'        => $validated['review_text'],
+            'rating'             => $validated['rating'],
+            'sentiment_analysis' => $response->structured['sentiment'],
+        ]);
 
         return response()->json([
             'success' => true,
-            'data' => $reservation,
+            'data' => $data,
             'message' => 'Review submitted successfully'
         ]);
     }

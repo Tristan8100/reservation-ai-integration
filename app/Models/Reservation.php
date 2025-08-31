@@ -15,6 +15,10 @@ class Reservation extends Model
         'status',
         'price_purchased',
         'reservation_datetime',
+        'address',          // Added
+        'city',             // Added
+        'state',            // Added
+        'zip_code',         // Added
         'review_text',
         'rating',
         'sentiment_analysis',
