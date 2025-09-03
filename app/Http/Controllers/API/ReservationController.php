@@ -196,8 +196,8 @@ class ReservationController extends Controller
         ]);
 
         $schema = new ObjectSchema(
-        name: 'movie_review',
-        description: 'A structured movie review',
+        name: 'reservation_review',
+        description: 'A structured review of user reservation experience',
         properties: [
             new StringSchema('sentiment', 'the sentiment of the review: Positive, Neutral, or Negative'),
         ],

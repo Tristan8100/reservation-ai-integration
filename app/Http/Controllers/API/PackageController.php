@@ -10,6 +10,12 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use App\Models\Package;
 use Intervention\Image\Facades\Image;
+use App\Models\Reservation;
+
+use Prism\Prism\Prism;
+use Prism\Prism\Enums\Provider;
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
 
 class PackageController extends Controller
 {
@@ -180,9 +186,58 @@ class PackageController extends Controller
         }
     }
 
-    public function AiAnalysis(Request $request)
+    public function AiAnalysis($id)
     {
-        //
+        // Step 1: Collect all reservations for this package (via options)
+        $reviews = Reservation::whereHas('packageOption', function ($query) use ($id) {
+                $query->where('package_id', $id);
+            })
+            ->whereNotNull('sentiment_analysis')
+            ->select('review_text', 'rating', 'sentiment_analysis')
+            ->get();
+
+        if ($reviews->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No reviews with sentiment analysis found for this package.'
+            ], 404);
+        }
+
+        // Step 2: Format reviews for AI
+        $reviewText = $reviews->map(function ($r) {
+            return "Review: {$r->review_text}\nRating: {$r->rating}\nSentiment: {$r->sentiment_analysis}";
+        })->implode("\n\n");
+
+        // Step 3: Define schema
+        $schema = new ObjectSchema(
+            name: 'package_analysis',
+            description: 'AI-generated analysis and recommendations for a package based on customer reviews',
+            properties: [
+                new StringSchema('analysis', 'Summarized analysis of reviews for the package'),
+                new StringSchema('recommendation', 'Actionable recommendations for improving the package'),
+            ],
+            requiredFields: ['analysis', 'recommendation']
+        );
+
+        // Step 4: Send to AI
+        $response = Prism::structured()
+            ->using(Provider::Gemini, 'gemini-2.0-flash')
+            ->withSchema($schema)
+            ->withPrompt("Here are customer reviews for a package:\n\n{$reviewText}\n\nPlease provide an overall analysis and recommendations.")
+            ->asStructured();
+
+        // Step 5: Update the Package
+        $package = Package::findOrFail($id);
+        $package->update([
+            'analysis' => $response->structured['analysis'],
+            'recommendation' => $response->structured['recommendation'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $package,
+            'message' => 'Package analysis and recommendation generated successfully.'
+        ]);
     }
 
            

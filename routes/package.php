@@ -15,3 +15,5 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/admin-packages', [PackageController::class, 'index']);//done
     Route::get('/admin-packages/{package}', [PackageController::class, 'show']);//done
 });
+
+Route::get('/admin-packages-AIs/{package}', [PackageController::class, 'AiAnalysis']);
