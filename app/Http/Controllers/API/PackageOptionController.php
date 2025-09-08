@@ -53,6 +53,26 @@ class PackageOptionController extends Controller
         ]);
     }
 
+    public function showwithReservations($id)
+    {
+        $option = PackageOption::with(['reservations' => function ($query) {
+            $query->whereNotNull('sentiment_analysis');
+        }])->find($id);
+
+        if (!$option) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Package option not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $option
+        ]);
+    }
+
+
     // Create new package option
     public function store(Request $request)
     {

@@ -14,6 +14,9 @@ Route::middleware(['auth:user-api'])->group(function () {
     Route::post('/reservations/{id}/review', [ReservationController::class, 'submitReview']); // Submit review, AI will be called UPDATE: DONE
     Route::post('/reservations', [ReservationController::class, 'store']); //create a reservation
     Route::get('/my-reservations', [ReservationController::class, 'authUserReservations']); //update a reservation
+
+    Route::get('/my-reservations-status', [ReservationController::class, 'authUserReservationsStatus']); //update a reservation
+    Route::patch('/my-reservations-update/{id}', [ReservationController::class, 'cancel']); //cancel a reservation
 });
 
 Route::middleware(['auth:admin-api'])->group(function () {

@@ -174,6 +174,57 @@ class ReservationController extends Controller
         ]);
     }
 
+    public function authUserReservationsStatus(Request $request)
+    {
+        $query = Reservation::with(['packageOption.package'])
+            ->where('user_id', Auth::id())
+            ->latest();
+
+        // Optional status filter
+        if ($request->has('status') && in_array($request->status, ['pending', 'confirmed', 'cancelled', 'completed'])) {
+            $query->where('status', $request->status);
+        }
+
+        $reservations = $query->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $reservations
+        ]);
+    }
+
+    public function cancel($id)
+    {
+        $reservation = Reservation::where('id', $id)
+            ->where('user_id', Auth::id())
+            ->first();
+
+        if (!$reservation) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Reservation not found.'
+            ], 404);
+        }
+
+        if ($reservation->status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only pending reservations can be cancelled.'
+            ], 400);
+        }
+
+        $reservation->status = 'cancelled';
+        $reservation->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Reservation cancelled successfully.',
+            'data' => $reservation
+        ]);
+    }
+
+
+
     // Submit review for a reservation
     public function submitReview(Request $request, $id)
     {

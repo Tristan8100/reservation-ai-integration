@@ -14,6 +14,8 @@ Route::middleware(['auth:admin-api'])->group(function () {
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/package-options', [PackageOptionController::class, 'index']);
     Route::get('/package-options/{id}', [PackageOptionController::class, 'show']);
+
+    Route::get('/package-options-reservations/{id}', [PackageOptionController::class, 'showwithReservations']);
 });
 
 Route::get('/package-options-AIs/{id}', [PackageOptionController::class, 'AiAnalysis']);
