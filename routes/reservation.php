@@ -20,7 +20,8 @@ Route::middleware(['auth:user-api'])->group(function () {
 });
 
 Route::middleware(['auth:admin-api'])->group(function () {
-    Route::put('/reservations-status/{id}', [ReservationController::class, 'updateStatus']); //update status
+    Route::put('/reservations-status/{id}', [ReservationController::class, 'updateStatus']); //update status //IF ISSUE CHECK AGAIN
+    Route::get('/reservations-status', [ReservationController::class, 'allReservationsStatus']); //get all reservations with status filter
 });
 
 

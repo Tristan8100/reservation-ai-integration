@@ -96,7 +96,8 @@ class ReservationController extends Controller
     // Update reservation (status)
     public function updateStatus(Request $request, $id)
     {
-        $reservation = Reservation::where('id', $id)->where('user_id', Auth::id())->first();
+        $reservation = Reservation::with(['user', 'packageOption.package'])->find($id);
+
         if (!$reservation) {
             return response()->json(['success' => false, 'message' => 'Reservation not found'], 404);
         }
@@ -105,12 +106,27 @@ class ReservationController extends Controller
             'status' => ['sometimes', Rule::in(['pending', 'confirmed', 'cancelled', 'completed'])],
         ]);
 
-        // Only allow reviews for completed reservations
-        if (isset($validated['rating']) && $reservation->status !== 'completed') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Can only review completed reservations'
-            ], 422);
+        // Prevent invalid status transitions
+        if (isset($validated['status'])) {
+            $current = $reservation->status;
+            $new = $validated['status'];
+
+            // Example rules:
+            // Completed reservations cannot go back to pending
+            if ($current === 'completed' && $new !== 'completed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Completed reservations cannot change to another status'
+                ], 422);
+            }
+
+            // Cancelled reservations cannot go to confirmed or completed
+            if ($current === 'cancelled' && in_array($new, ['confirmed', 'completed'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cancelled reservations cannot be confirmed or completed'
+                ], 422);
+            }
         }
 
         $reservation->update($validated);
@@ -190,6 +206,52 @@ class ReservationController extends Controller
         return response()->json([
             'success' => true,
             'data' => $reservations
+        ]);
+    }
+
+    public function allReservationsStatus(Request $request) 
+    {
+        $perPage = $request->input('per_page', 10); // default 10 per page
+
+        $query = Reservation::with([
+                'user:id,name',
+                'packageOption:id,package_id,name',
+                'packageOption.package:id,name'
+            ])
+            ->latest()
+            ->when($request->status, function ($q, $status) {
+                if (in_array($status, ['pending', 'confirmed', 'cancelled', 'completed'])) {
+                    $q->where('status', $status);
+                }
+            })
+            ->when($request->search, function ($q, $search) {
+                $q->whereHas('user', fn($uq) => $uq->where('name', 'like', "%$search%"))
+                ->orWhereHas('packageOption.package', fn($pq) => $pq->where('name', 'like', "%$search%"));
+            });
+
+        $reservations = $query->paginate($perPage);
+
+        // Transform for frontend
+        $reservationsData = $reservations->map(fn($r) => [
+            'id' => $r->id,
+            'user' => $r->user->name ?? 'N/A',
+            'package' => $r->packageOption->package->name ?? 'N/A',
+            'package_option' => $r->packageOption->name ?? 'N/A',
+            'package_option_id' => $r->packageOption->id,
+            'status' => $r->status,
+            'date' => $r->reservation_datetime->format('Y-m-d H:i'),
+            'amount' => $r->price_purchased,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $reservationsData,
+            'pagination' => [
+                'current_page' => $reservations->currentPage(),
+                'last_page' => $reservations->lastPage(),
+                'per_page' => $reservations->perPage(),
+                'total' => $reservations->total(),
+            ],
         ]);
     }
 
