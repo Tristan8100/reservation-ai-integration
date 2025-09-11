@@ -54,3 +54,4 @@ include __DIR__ . '/package.php';
 include __DIR__ . '/package_option.php';
 include __DIR__ . '/reservation.php';
 include __DIR__ . '/analytics.php';
+include __DIR__ . '/user.php';
