@@ -5,6 +5,9 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Models\Reservation;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
@@ -51,5 +54,62 @@ class UserController extends Controller
                 ];
             }),
         ]);
+    }
+
+    public function getAllReservation()
+    {
+        $userId = Auth::id();
+
+        // Count reservations by status
+        $statuses = ['pending', 'cancelled', 'completed', 'confirmed'];
+        $counts = [];
+
+        foreach ($statuses as $status) {
+            $counts[$status] = Reservation::where('user_id', $userId)
+                ->where('status', $status)
+                ->count();
+        }
+
+        // Optionally, get total reservations
+        $counts['total'] = array_sum($counts);
+
+        return response()->json($counts);
+    }
+
+    public function updateName(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        $userId = Auth::id();
+        $user = User::findOrFail($userId);
+        $user->name = $request->name;
+        $user->save();
+
+        return response()->json([
+            'message' => 'Name updated successfully',
+            'user' => $user
+        ]);
+    }
+
+    public function change(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'new_password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $userId = Auth::id();
+        $user = User::findOrFail($userId);
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['message' => 'Current password is incorrect'], 403);
+        }
+
+        $user->password = $request->new_password; // Will be hashed due to User cast
+        $user->save();
+
+        return response()->json(['message' => 'Password updated successfully']);
     }
 }

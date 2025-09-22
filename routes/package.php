@@ -12,8 +12,9 @@ Route::middleware(['auth:admin-api'])->group(function () {
 });
 
 Route::middleware(['auth:sanctum'])->group(function () {
-    Route::get('/admin-packages', [PackageController::class, 'index']);//done
+    //done
     Route::get('/admin-packages/{package}', [PackageController::class, 'show']);//done
 });
+Route::get('/admin-packages', [PackageController::class, 'index']);
 
 Route::get('/admin-packages-AIs/{package}', [PackageController::class, 'AiAnalysis']);

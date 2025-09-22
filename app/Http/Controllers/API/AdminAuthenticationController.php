@@ -70,4 +70,29 @@ class AdminAuthenticationController extends Controller
             'success' => true,
         ]);
     }
+
+    public function addAdmin(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string',
+            'email' => 'required|email|unique:admins,email',
+            'password' => 'required|string|min:8',
+        ]);
+
+        $admin = Admin::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+
+        return response()->json([
+            'message' => 'Admin added successfully.',
+            'success' => true,
+            'admin_info' => [
+                'id' => $admin->id,
+                'name' => $admin->name,
+                'email' => $admin->email,
+            ]
+        ]);
+    }
 }

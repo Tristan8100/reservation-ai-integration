@@ -94,6 +94,13 @@ class AuthenticationController extends Controller
             }
 
             $user = User::where('email', $credentials['email'])->first();
+            if (!$user->hasVerifiedEmail()) {
+                return response()->json([
+                    'response_code' => 401,
+                    'status'        => 'error',
+                    'message'       => 'Email not verified',
+                ], 401);
+            }
             $user->tokens()->delete();
             $token = $user->createToken('admin-auth-token')->plainTextToken;
 
