@@ -95,4 +95,13 @@ class AdminAuthenticationController extends Controller
             ]
         ]);
     }
+
+    public function getAdmins()
+    {
+        $admins = Admin::all(['id', 'name', 'email', 'created_at', 'updated_at']);
+
+        return response()->json([
+            'admins' => $admins
+        ]);
+    }
 }

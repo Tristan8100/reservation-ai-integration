@@ -61,3 +61,4 @@ include __DIR__ . '/user.php';
 //general
 
 Route::post('/add-admin', [AdminAuthenticationController::class, 'addAdmin']);
+Route::get('/get-admins', [AdminAuthenticationController::class, 'getAdmins']);

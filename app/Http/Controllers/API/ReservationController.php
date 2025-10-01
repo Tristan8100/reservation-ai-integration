@@ -13,6 +13,7 @@ use Prism\Prism\Prism;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Schema\ObjectSchema;
 use Prism\Prism\Schema\StringSchema;
+use Illuminate\Support\Facades\Mail;
 
 class ReservationController extends Controller
 {
@@ -103,16 +104,14 @@ class ReservationController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => ['sometimes', Rule::in(['pending', 'confirmed', 'cancelled', 'completed'])],
+            'status' => ['required', Rule::in(['pending', 'accepted', 'confirmed', 'cancelled', 'completed'])],
         ]);
 
-        // Prevent invalid status transitions
         if (isset($validated['status'])) {
             $current = $reservation->status;
             $new = $validated['status'];
 
-            // Example rules:
-            // Completed reservations cannot go back to pending
+            // ---- Transition rules ----
             if ($current === 'completed' && $new !== 'completed') {
                 return response()->json([
                     'success' => false,
@@ -120,16 +119,50 @@ class ReservationController extends Controller
                 ], 422);
             }
 
-            // Cancelled reservations cannot go to confirmed or completed
-            if ($current === 'cancelled' && in_array($new, ['confirmed', 'completed'])) {
+            if ($current === 'cancelled' && in_array($new, ['pending', 'accepted', 'confirmed', 'completed'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cancelled reservations cannot be confirmed or completed'
+                    'message' => 'Cancelled reservations cannot be changed to another status'
+                ], 422);
+            }
+
+            if ($current === 'confirmed' && $new === 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Accepted reservations cannot go back to pending'
                 ], 422);
             }
         }
 
         $reservation->update($validated);
+
+        // ---- Send email only if status changed ----
+        if (isset($validated['status'])) {
+            $user = $reservation->user;
+            $packageName = $reservation->packageOption->package->name ?? 'Unknown Package';
+            $optionName = $reservation->packageOption->name ?? 'Option';
+
+            $status = ucfirst($reservation->status);
+
+            $body = "Hello {$user->name},\n\n"
+                . "Your reservation (ID: {$reservation->id}) for '{$packageName}' - '{$optionName}' "
+                . "has been updated to: {$status}.\n\n";
+
+            if ($status === 'Cancelled') {
+                $body .= "We’re sorry to see you cancel. If you change your mind, feel free to make a new reservation anytime.";
+            } elseif ($status === 'Accepted') {
+                $body .= "Good news! Your reservation has been accepted. We’ll notify you once it’s confirmed.";
+            } elseif ($status === 'Confirmed') {
+                $body .= "Your reservation is now confirmed!!. Please get ready for the scheduled date.";
+            } elseif ($status === 'Completed') {
+                $body .= "Your reservation is completed. Thank you for choosing us!";
+            }
+
+            Mail::raw($body, function ($message) use ($user) {
+                $message->to($user->email)
+                        ->subject('Reservation Status Update');
+            });
+        }
 
         return response()->json([
             'success' => true,

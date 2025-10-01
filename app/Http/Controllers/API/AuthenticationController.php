@@ -96,7 +96,7 @@ class AuthenticationController extends Controller
             $user = User::where('email', $credentials['email'])->first();
             if (!$user->hasVerifiedEmail()) {
                 return response()->json([
-                    'response_code' => 401,
+                    'response_code' => 403, // 403 Forbidden
                     'status'        => 'error',
                     'message'       => 'Email not verified',
                 ], 401);
