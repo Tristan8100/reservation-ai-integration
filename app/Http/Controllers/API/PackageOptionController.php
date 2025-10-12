@@ -2,20 +2,15 @@
 
 namespace App\Http\Controllers\API;
 
-
-use App\Models\PackageOption;
-
-
-
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\PackageOption;
+use App\Models\Reservation;
+use Cloudinary\Cloudinary;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
-use App\Models\Package;
-use App\Models\Reservation;
-use Intervention\Image\Facades\Image;
+use Illuminate\Support\Facades\Log;
 
 use Prism\Prism\Prism;
 use Prism\Prism\Enums\Provider;
@@ -24,56 +19,26 @@ use Prism\Prism\Schema\StringSchema;
 
 class PackageOptionController extends Controller
 {
-    // Get all package options
     public function index()
     {
         $options = PackageOption::with('package')->latest()->get();
-        
-        return response()->json([
-            'success' => true,
-            'data' => $options
-        ]);
+        return response()->json(['success' => true, 'data' => $options]);
     }
 
-    // Get single package option
     public function show($id)
     {
         $option = PackageOption::with('package')->find($id);
-
-        if (!$option) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Package option not found'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $option
-        ]);
+        if (!$option) return response()->json(['success' => false, 'message' => 'Package option not found'], 404);
+        return response()->json(['success' => true, 'data' => $option]);
     }
 
     public function showwithReservations($id)
     {
-        $option = PackageOption::with(['reservations' => function ($query) {
-            $query->whereNotNull('sentiment_analysis');
-        }])->find($id);
-
-        if (!$option) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Package option not found'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $option
-        ]);
+        $option = PackageOption::with(['reservations' => fn($q) => $q->whereNotNull('sentiment_analysis')])->find($id);
+        if (!$option) return response()->json(['success' => false, 'message' => 'Package option not found'], 404);
+        return response()->json(['success' => true, 'data' => $option]);
     }
 
-
-    // Create new package option
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -85,55 +50,37 @@ class PackageOptionController extends Controller
         ]);
 
         try {
-            // Initialize ImageManager with GD driver
             $manager = new ImageManager(new Driver());
-            
-            // Process image
-            $image = $manager->read($request->file('picture'))
-                ->resize(800, null, function ($constraint) {
-                    $constraint->aspectRatio();
-                    $constraint->upsize();
-                })->toJpeg(80);
+            $image = $manager->read($request->file('picture')->getRealPath())
+                ->resize(800, null, fn($c) => $c->aspectRatio()->upsize())
+                ->toJpeg(80);
 
-            // Generate filename and path
-            $filename = 'package-option-' . Str::slug($request->name) . '-' . time() . '.jpg';
-            $uploadPath = public_path('uploads/package-options');
-            File::ensureDirectoryExists($uploadPath);
-            $imagePath = $uploadPath . '/' . $filename;
+            $cloudinary = new Cloudinary();
+            $upload = $cloudinary->uploadApi()->upload($image->toDataUri(), [
+                'folder' => 'sweet-and-savory/package-options',
+                'public_id' => 'option_' . Str::uuid(),
+                'overwrite' => true,
+            ]);
 
-            // Save as JPEG
-            $image->save($imagePath);
-
-            // Create package option
             $packageOption = PackageOption::create([
                 'package_id' => $validated['package_id'],
                 'name' => $validated['name'],
                 'description' => $validated['description'],
                 'price' => $validated['price'],
-                'picture_url' => '/uploads/package-options/' . $filename,
+                'picture_url' => $upload['secure_url'],
             ]);
 
-            return response()->json([
-                'success' => true,
-                'data' => $packageOption->load('package'),
-                'message' => 'Package option created successfully'
-            ], 201);
+            return response()->json(['success' => true, 'data' => $packageOption->load('package'), 'message' => 'Package option created successfully'], 201);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error: ' . $e->getMessage(),
-            ], 500);
+            Log::error('PackageOption store failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
 
-    // Update package option
     public function update(Request $request, $id)
     {
-        $option = PackageOption::find($id);
-        if (!$option) {
-            return response()->json(['success' => false, 'message' => 'Package option not found'], 404);
-        }
+        $option = PackageOption::findOrFail($id);
 
         $validated = $request->validate([
             'package_id' => 'sometimes|exists:packages,id',
@@ -144,74 +91,69 @@ class PackageOptionController extends Controller
         ]);
 
         try {
-            // Handle image update if provided
+            $cloudinary = new Cloudinary();
+            $newImageUrl = $option->picture_url;
+
             if ($request->hasFile('picture')) {
-                $manager = new ImageManager(new Driver());
-                $image = $manager->read($request->file('picture'))
-                    ->resize(800, null, function ($constraint) {
-                        $constraint->aspectRatio();
-                        $constraint->upsize();
-                    })->toJpeg(80);
-
-                $filename = 'option-' . Str::slug($request->name ?? $option->name) . '-' . time() . '.webp';
-                $uploadPath = public_path('uploads/package-options');
-                File::ensureDirectoryExists($uploadPath);
-                $imagePath = $uploadPath . '/' . $filename;
-
-                // Delete old image if exists
-                if ($option->picture_url && File::exists(public_path($option->picture_url))) {
-                    File::delete(public_path($option->picture_url));
+                // Delete old image if it exists on Cloudinary
+                if ($option->picture_url && str_starts_with($option->picture_url, 'https://res.cloudinary.com')) {
+                    try {
+                        $publicId = pathinfo(parse_url($option->picture_url, PHP_URL_PATH), PATHINFO_FILENAME);
+                        $cloudinary->uploadApi()->destroy('sweet-and-savory/package-options/' . $publicId);
+                    } catch (\Exception $e) {
+                        Log::warning("Failed to delete old Cloudinary image for option {$option->id}: " . $e->getMessage());
+                    }
                 }
 
-                $image->save($imagePath);
-                $validated['picture_url'] = '/uploads/package-options/' . $filename;
+                // Resize and upload new image
+                $manager = new ImageManager(new Driver());
+                $image = $manager->read($request->file('picture')->getRealPath())
+                    ->resize(800, null, fn($c) => $c->aspectRatio()->upsize())
+                    ->toJpeg(80);
+
+                $upload = $cloudinary->uploadApi()->upload($image->toDataUri(), [
+                    'folder' => 'sweet-and-savory/package-options',
+                    'public_id' => 'option_' . Str::uuid(),
+                    'overwrite' => true,
+                ]);
+
+                $newImageUrl = $upload['secure_url'];
             }
 
-            $option->update($validated);
+            $option->update(array_merge($validated, ['picture_url' => $newImageUrl]));
 
-            return response()->json([
-                'success' => true,
-                'data' => $option->load('package')
-            ]);
+            return response()->json(['success' => true, 'data' => $option->load('package')]);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Update failed: ' . $e->getMessage()
-            ], 500);
+            Log::error('PackageOption update failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Update failed: ' . $e->getMessage()], 500);
         }
     }
 
-    // Delete package option
     public function destroy($id)
     {
-        $option = PackageOption::find($id);
-        if (!$option) {
-            return response()->json(['success' => false, 'message' => 'Package option not found'], 404);
-        }
+        $option = PackageOption::findOrFail($id);
 
         try {
-            // Delete associated image
-            if ($option->picture_url && File::exists(public_path($option->picture_url))) {
-                File::delete(public_path($option->picture_url));
+            if ($option->picture_url && str_starts_with($option->picture_url, 'https://res.cloudinary.com')) {
+                $cloudinary = new Cloudinary();
+                try {
+                    $publicId = pathinfo(parse_url($option->picture_url, PHP_URL_PATH), PATHINFO_FILENAME);
+                    $cloudinary->uploadApi()->destroy('sweet-and-savory/package-options/' . $publicId);
+                } catch (\Exception $e) {
+                    Log::warning("Failed to delete Cloudinary image for option {$option->id}: " . $e->getMessage());
+                }
             }
 
             $option->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Package option deleted'
-            ]);
+            return response()->json(['success' => true, 'message' => 'Package option deleted']);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Deletion failed: ' . $e->getMessage()
-            ], 500);
+            Log::error('PackageOption deletion failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Deletion failed: ' . $e->getMessage()], 500);
         }
     }
 
-    // Get options by package
     public function getByPackage($packageId)
     {
         $options = PackageOption::where('package_id', $packageId)
@@ -219,33 +161,22 @@ class PackageOptionController extends Controller
             ->latest()
             ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => $options
-        ]);
+        return response()->json(['success' => true, 'data' => $options]);
     }
 
     public function AiAnalysis($id)
     {
-        // Step 1: Get reviews with sentiment
         $reviews = Reservation::where('package_option_id', $id)
             ->whereNotNull('sentiment_analysis')
             ->select('review_text', 'rating', 'sentiment_analysis')
             ->get();
 
         if ($reviews->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No reviews with sentiment analysis found for this package option.'
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'No reviews with sentiment analysis found'], 404);
         }
 
-        // Step 2: Prepare review content
-        $reviewText = $reviews->map(function ($r) {
-            return "Review: {$r->review_text}\nRating: {$r->rating}\nSentiment: {$r->sentiment_analysis}";
-        })->implode("\n\n");
+        $reviewText = $reviews->map(fn($r) => "Review: {$r->review_text}\nRating: {$r->rating}\nSentiment: {$r->sentiment_analysis}")->implode("\n\n");
 
-        // Step 3: Define schema for AI response
         $schema = new ObjectSchema(
             name: 'package_analysis',
             description: 'AI-generated analysis and recommendations based on customer reviews',
@@ -256,26 +187,18 @@ class PackageOptionController extends Controller
             requiredFields: ['analysis', 'recommendation']
         );
 
-        // Step 4: Send to AI via Prism
         $response = Prism::structured()
             ->using(Provider::Gemini, 'gemini-2.0-flash')
             ->withSchema($schema)
             ->withPrompt("Here are customer reviews for a package option:\n\n{$reviewText}\n\nPlease provide an overall analysis and recommendations.")
             ->asStructured();
 
-        // Step 5: Update the PackageOption
         $option = PackageOption::findOrFail($id);
         $option->update([
             'analysis' => $response->structured['analysis'],
             'recommendation' => $response->structured['recommendation'],
         ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $option,
-            'message' => 'Package analysis and recommendation generated successfully.'
-        ]);
+        return response()->json(['success' => true, 'data' => $option, 'message' => 'Package analysis and recommendation generated successfully']);
     }
-
-
 }

@@ -4,14 +4,13 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\Package;
+use App\Models\Reservation;
+use Cloudinary\Cloudinary;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Models\Package;
-use Intervention\Image\Facades\Image;
-use App\Models\Reservation;
-
 use Prism\Prism\Prism;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Schema\ObjectSchema;
@@ -28,30 +27,26 @@ class PackageController extends Controller
         ]);
 
         try {
-            // Initialize ImageManager with GD driver
-            $manager = new ImageManager(new Driver()); // or 'imagick'
-            
-            // Process image
-            $image = $manager->read($request->file('picture'))
+            $manager = new ImageManager(new Driver());
+            $image = $manager->read($request->file('picture')->getRealPath())
                 ->resize(800, null, function ($constraint) {
                     $constraint->aspectRatio();
                     $constraint->upsize();
-                })->toJpeg(80);
+                })
+                ->toJpeg(80);
 
-            // Generate filename and path
-            $filename = 'package-' . Str::slug($request->name) . '-' . time() . '.jpg';
-            $uploadPath = public_path('uploads/packages');
-            File::ensureDirectoryExists($uploadPath);
-            $imagePath = $uploadPath . '/' . $filename;
+            $cloudinary = new Cloudinary();
 
-            // Save as WebP
-            $image->save($imagePath);
+            $upload = $cloudinary->uploadApi()->upload($image->toDataUri(), [
+                'folder' => 'sweet-and-savory/packages',
+                'public_id' => 'package_' . Str::uuid(),
+                'overwrite' => true,
+            ]);
 
-            // Create package
             $package = Package::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'],
-                'picture_url' => '/uploads/packages/' . $filename,
+                'picture_url' => $upload['secure_url'],
             ]);
 
             return response()->json([
@@ -60,9 +55,10 @@ class PackageController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            Log::error('Package upload failed: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage(),
+                'message' => 'Error uploading image: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -70,7 +66,7 @@ class PackageController extends Controller
     public function index()
     {
         $packages = Package::with('options')->latest()->get();
-        
+
         return response()->json([
             'success' => true,
             'data' => $packages
@@ -105,58 +101,57 @@ class PackageController extends Controller
         ]);
 
         try {
-            // Initialize $newImagePath early to avoid undefined variable issues
-            $newImagePath = $package->picture_url; // Default to old image if no update
+            $cloudinary = new Cloudinary();
+            $newImageUrl = $package->picture_url;
 
-            // Handle image upload if provided
             if ($request->hasFile('picture')) {
+                // Delete old image if on Cloudinary
+                if ($package->picture_url && str_starts_with($package->picture_url, 'https://res.cloudinary.com')) {
+                    try {
+                        $publicId = pathinfo(parse_url($package->picture_url, PHP_URL_PATH), PATHINFO_FILENAME);
+                        $cloudinary->uploadApi()->destroy('sweet-and-savory/packages/' . $publicId);
+                    } catch (\Exception $e) {
+                        Log::warning("Failed to delete old image for package {$package->id}: " . $e->getMessage());
+                    }
+                }
+
+                // Resize and upload new image
                 $manager = new ImageManager(new Driver());
-                $image = $manager->read($request->file('picture'))
+                $image = $manager->read($request->file('picture')->getRealPath())
                     ->resize(800, null, function ($constraint) {
                         $constraint->aspectRatio();
                         $constraint->upsize();
                     })
-                    ->toJpeg(80); //80% decrease quality
+                    ->toJpeg(80);
 
-                // Generate new filename
-                $filename = 'package-' . Str::slug($request->name) . '-' . time() . '.jpg';
-                $uploadPath = public_path('uploads/packages');
-                File::ensureDirectoryExists($uploadPath);
-                $imagePath = $uploadPath . '/' . $filename;
+                $upload = $cloudinary->uploadApi()->upload($image->toDataUri(), [
+                    'folder' => 'sweet-and-savory/packages',
+                    'public_id' => 'package_' . Str::uuid(),
+                    'overwrite' => true,
+                ]);
 
-                // Save new image to DB
-                $image->save($imagePath);
-
-                // Delete old image if it exists
-                if ($package->picture_url && File::exists(public_path($package->picture_url))) {
-                    File::delete(public_path($package->picture_url));
-                }
-
-                // Update the image path
-                $newImagePath = '/uploads/packages/' . $filename;// rewrite
+                $newImageUrl = $upload['secure_url'];
             }
 
-            // Update package data
             $package->update([
                 'name' => $validated['name'],
                 'description' => $validated['description'],
-                'picture_url' => $newImagePath, // Original or Rewrited
+                'picture_url' => $newImageUrl,
             ]);
 
             return response()->json([
                 'success' => true,
                 'data' => $package,
-                'new_image' => $newImagePath //for debugging
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Package update failed: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage(),
+                'message' => 'Error updating package: ' . $e->getMessage(),
             ], 500);
         }
     }
-
 
     public function destroy($id)
     {
@@ -166,29 +161,34 @@ class PackageController extends Controller
         }
 
         try {
-            // Delete associated image
-            if ($package->picture_url && File::exists(public_path($package->picture_url))) {
-                File::delete(public_path($package->picture_url));
+            if ($package->picture_url && str_starts_with($package->picture_url, 'https://res.cloudinary.com')) {
+                $cloudinary = new Cloudinary();
+                try {
+                    $publicId = pathinfo(parse_url($package->picture_url, PHP_URL_PATH), PATHINFO_FILENAME);
+                    $cloudinary->uploadApi()->destroy('sweet-and-savory/packages/' . $publicId);
+                } catch (\Exception $e) {
+                    Log::warning("Failed to delete Cloudinary image for package {$package->id}: " . $e->getMessage());
+                }
             }
 
             $package->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Package deleted'
+                'message' => 'Package deleted successfully',
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Failed to delete package: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Deletion failed: ' . $e->getMessage()
+                'message' => 'Deletion failed: ' . $e->getMessage(),
             ], 500);
         }
     }
 
     public function AiAnalysis($id)
     {
-        // Step 1: Collect all reservations for this package (via options)
         $reviews = Reservation::whereHas('packageOption', function ($query) use ($id) {
                 $query->where('package_id', $id);
             })
@@ -203,12 +203,10 @@ class PackageController extends Controller
             ], 404);
         }
 
-        // Step 2: Format reviews for AI
         $reviewText = $reviews->map(function ($r) {
             return "Review: {$r->review_text}\nRating: {$r->rating}\nSentiment: {$r->sentiment_analysis}";
         })->implode("\n\n");
 
-        // Step 3: Define schema
         $schema = new ObjectSchema(
             name: 'package_analysis',
             description: 'AI-generated analysis and recommendations for a package based on customer reviews',
@@ -219,14 +217,12 @@ class PackageController extends Controller
             requiredFields: ['analysis', 'recommendation']
         );
 
-        // Step 4: Send to AI
         $response = Prism::structured()
             ->using(Provider::Gemini, 'gemini-2.0-flash')
             ->withSchema($schema)
             ->withPrompt("Here are customer reviews for a package:\n\n{$reviewText}\n\nPlease provide an overall analysis and recommendations.")
             ->asStructured();
 
-        // Step 5: Update the Package
         $package = Package::findOrFail($id);
         $package->update([
             'analysis' => $response->structured['analysis'],
@@ -239,6 +235,4 @@ class PackageController extends Controller
             'message' => 'Package analysis and recommendation generated successfully.'
         ]);
     }
-
-           
 }
