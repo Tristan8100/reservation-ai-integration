@@ -11,7 +11,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 Route::middleware(['auth:user-api'])->group(function () {
-    Route::post('/reservations/{id}/review', [ReservationController::class, 'submitReview']); // Submit review, AI will be called UPDATE: DONE
+    Route::post('/reservations/{id}/review', [ReservationController::class, 'submitReview']); // Submit review, AI will be called UPDATE: DONE //CHANGED AI MODEL
     Route::post('/reservations', [ReservationController::class, 'store']); //create a reservation
     Route::get('/my-reservations', [ReservationController::class, 'authUserReservations']); //update a reservation
 

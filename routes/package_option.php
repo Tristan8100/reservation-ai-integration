@@ -8,7 +8,7 @@ Route::middleware(['auth:admin-api'])->group(function () {
     Route::post('/package-options-update/{id}', [PackageOptionController::class, 'update']); //IF HAS IMAGE, DO NOT EVER EVER EVER USE PUT, PLEASE, IDK WHY BUT JUST DON'T
     Route::delete('/package-options/{id}', [PackageOptionController::class, 'destroy']);
 
-    Route::get('/package-options-AI/{id}', [PackageOptionController::class, 'AiAnalysis']); // NOT YET CREATED
+    Route::get('/package-options-AI/{id}', [PackageOptionController::class, 'AiAnalysis']); // CHANGED AI MODEL
 });
 
 Route::middleware(['auth:sanctum'])->group(function () {

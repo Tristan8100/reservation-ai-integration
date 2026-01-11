@@ -350,7 +350,7 @@ class ReservationController extends Controller
         requiredFields: ['sentiment']);
 
         $response = Prism::structured()
-            ->using(Provider::Gemini, 'gemini-2.0-flash')
+            ->using(Provider::Gemini, 'gemini-2.5-flash-lite') //gemini-2.0-flash not working
             ->withSchema($schema)
             ->withPrompt($validated['review_text'])
             ->asStructured();

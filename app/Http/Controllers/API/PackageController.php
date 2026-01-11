@@ -218,7 +218,7 @@ class PackageController extends Controller
         );
 
         $response = Prism::structured()
-            ->using(Provider::Gemini, 'gemini-2.0-flash')
+            ->using(Provider::Gemini, 'gemini-2.5-flash-lite') //gemini-2.0-flash not working
             ->withSchema($schema)
             ->withPrompt("Here are customer reviews for a package:\n\n{$reviewText}\n\nPlease provide an overall analysis and recommendations.")
             ->asStructured();
