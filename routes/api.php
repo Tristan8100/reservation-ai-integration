@@ -6,6 +6,11 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\VerifyEmailController;
 use App\Http\Controllers\API\AdminAuthenticationController;
 
+use Prism\Prism\Prism;
+use Prism\Prism\Enums\Provider;
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
+
 Route::group(['namespace' => 'App\Http\Controllers\API'], function () {
     // --------------- Register and Login ----------------//
     Route::post('register', 'AuthenticationController@register')->name('register');
@@ -62,3 +67,34 @@ include __DIR__ . '/user.php';
 
 Route::post('/add-admin', [AdminAuthenticationController::class, 'addAdmin']);
 Route::get('/get-admins', [AdminAuthenticationController::class, 'getAdmins']);
+
+Route::get('/debug-gemini', function () {
+
+    try {
+        $schema = new ObjectSchema(
+            name: 'debug_test',
+            description: 'Simple test schema',
+            properties: [
+                new StringSchema('message', 'Test output'),
+            ],
+            requiredFields: ['message']
+        );
+
+        $response = Prism::structured()
+            ->using(Provider::Gemini, 'gemini-2.5-flash-lite')
+            ->withSchema($schema)
+            ->withPrompt("Say hello and confirm API is working.")
+            ->asStructured();
+
+        return response()->json([
+            'success' => true,
+            'structured' => $response->structured ?? null,
+        ]);
+
+    } catch (\Throwable $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+        ]);
+    }
+});
