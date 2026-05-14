@@ -81,7 +81,7 @@ Route::get('/debug-gemini', function () {
         );
 
         $response = Prism::structured()
-            ->using(Provider::Gemini, 'gemini-2.5-flash-lite')
+            ->using(Provider::Gemini, 'gemini-2.5-flash') //changed to flash only
             ->withSchema($schema)
             ->withPrompt("Say hello and confirm API is working.")
             ->asStructured();
