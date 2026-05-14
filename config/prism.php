@@ -37,7 +37,7 @@ return [
         ],
         'gemini' => [
             'api_key' => env('GEMINI_API_KEY', ''),
-            'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/models'),
+            'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), //added reverse proxy
         ],
         'deepseek' => [
             'api_key' => env('DEEPSEEK_API_KEY', ''),

@@ -98,3 +98,33 @@ Route::get('/debug-gemini', function () {
         ]);
     }
 });
+
+Route::get('/debug-env-gemini', function () {
+    return response()->json([
+        'app_env'     => app()->environment(),
+        'gemini_url'  => config('prism.providers.gemini.url'), // Checks the actual loaded config
+        'raw_env_url' => env('GEMINI_URL'),                 // Checks the raw .env value
+        'status'      => 'Checking if proxy is active'
+    ]);
+});
+
+// REVERSE PROXY CODE CLOUDFLARE
+// export default {
+//   async fetch(request, env) {
+//     const url = new URL(request.url);
+    
+//     // This replaces your worker URL with Google's URL but keeps the rest of the path
+//     const targetUrl = `https://generativelanguage.googleapis.com${url.pathname}${url.search}`;
+
+//     const proxyRequest = new Request(targetUrl, {
+//       method: request.method,
+//       headers: request.headers,
+//       body: request.body,
+//     });
+
+//     // We MUST tell Google it's talking to Google, or it rejects the request
+//     proxyRequest.headers.set("Host", "generativelanguage.googleapis.com");
+
+//     return fetch(proxyRequest);
+//   },
+// };
